@@ -1,0 +1,39 @@
+name: pinelab-keeper
+
+# R25 (2026-10-05): exact-time trigger for janik4321sdfa/pinelab-gold-signal (private), independent of the user's PC.
+# GitHub drops/delays scheduled runs of the private repo; workflow_dispatch starts promptly. One keeper run waits inside
+# the job and dispatches the target workflows at fixed New York times (see keeper.py plan()). The crons below only have
+# to START a keeper once per weekday; extra runs see the active keeper and exit within a minute. A run hands over to a
+# successor (workflow_dispatch) before the 6 h job limit. The keeper never computes or posts a trading signal.
+on:
+  schedule:
+    - cron: "*/20 13-19 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      parent:
+        description: "run id of the predecessor (chain hand-over, set automatically)"
+        default: ""
+      test:
+        description: "1 = print today's plan and check API access only"
+        default: "0"
+
+permissions:
+  actions: write          # dispatch the own successor + list own runs
+  contents: write         # keepalive empty commit (public repos lose schedules after 60 idle days)
+
+jobs:
+  keep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Keeper
+        env:
+          TARGET_TOKEN: ${{ secrets.TARGET_TOKEN }}
+          GH_SELF_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          PARENT_RUN: ${{ github.event.inputs.parent || '' }}
+          KEEPER_TEST: ${{ github.event.inputs.test || '0' }}
+        run: python3 -u keeper.py
